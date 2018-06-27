@@ -413,6 +413,7 @@ PyObject * MGLContext_depth_renderbuffer(MGLContext * self, PyObject * args);
 PyObject * MGLContext_compute_shader(MGLContext * self, PyObject * args);
 PyObject * MGLContext_query(MGLContext * self, PyObject * args);
 PyObject * MGLContext_scope(MGLContext * self, PyObject * args);
+PyObject * MGLContext_sampler(MGLContext * self, PyObject * args);
 
 PyObject * MGLContext_release(MGLContext * self) {
 	// TODO:
@@ -444,6 +445,7 @@ PyMethodDef MGLContext_tp_methods[] = {
 	{"compute_shader", (PyCFunction)MGLContext_compute_shader, METH_VARARGS, 0},
 	{"query", (PyCFunction)MGLContext_query, METH_VARARGS, 0},
 	{"scope", (PyCFunction)MGLContext_scope, METH_VARARGS, 0},
+	{"sampler", (PyCFunction)MGLContext_sampler, METH_VARARGS, 0},
 
 	{"release", (PyCFunction)MGLContext_release, METH_NOARGS, 0},
 

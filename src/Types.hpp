@@ -48,6 +48,7 @@ struct MGLTextureCube;
 struct MGLUniform;
 struct MGLUniformBlock;
 struct MGLVertexArray;
+struct MGLSampler;
 
 struct MGLDataType {
 	int * internal_format;
@@ -371,6 +372,15 @@ struct MGLVertexArray {
 	int num_vertices;
 };
 
+struct MGLSampler {
+	PyObject_HEAD
+
+	MGLContext * context;
+	int sampler_obj;
+
+	// TODO: impl sampler
+};
+
 MGLDataType * from_dtype(const char * dtype);
 
 void MGLAttribute_Invalidate(MGLAttribute * attribute);
@@ -386,6 +396,7 @@ void MGLTexture_Invalidate(MGLTexture * texture);
 void MGLTextureArray_Invalidate(MGLTextureArray * texture);
 void MGLUniform_Invalidate(MGLUniform * uniform);
 void MGLVertexArray_Invalidate(MGLVertexArray * vertex_array);
+void MGLSampler_Invalidate(MGLSampler * sampler);
 
 void MGLAttribute_Complete(MGLAttribute * attribute, const GLMethods & gl);
 void MGLUniform_Complete(MGLUniform * self, const GLMethods & gl);
@@ -411,3 +422,4 @@ extern PyTypeObject MGLTextureArray_Type;
 extern PyTypeObject MGLUniformBlock_Type;
 extern PyTypeObject MGLUniform_Type;
 extern PyTypeObject MGLVertexArray_Type;
+extern PyTypeObject MGLSampler_Type;

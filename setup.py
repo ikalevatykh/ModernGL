@@ -66,6 +66,7 @@ mgl = Extension(
     extra_compile_args=extra_compile_args[target],
     extra_link_args=extra_linker_args[target],
     sources=[
+        'src/Sampler.cpp',
         'src/Attribute.cpp',
         'src/Buffer.cpp',
         'src/BufferFormat.cpp',

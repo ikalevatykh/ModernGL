@@ -2362,6 +2362,31 @@ class Framebuffer:
         self.mglo.release()
 
 
+class Sampler:  # TODO: impl sampler
+    __slots__ = ['mglo', '_glo', 'ctx', 'extra']
+
+    def __init__(self):
+        self.mglo = None
+        self._glo = None
+        self.ctx = None
+        self.extra = None
+        raise TypeError()
+
+    @property
+    def bar(self) -> None:
+        return self.mglo.bar
+
+    @bar.setter
+    def bar(self, value):
+        self.mglo.bar = value
+
+    def foo(self) -> None:
+        self.mglo.foo()
+
+    def release(self) -> None:
+        self.mglo.release()
+
+
 class Context:
     '''
         Class exposing OpenGL features.
@@ -3102,6 +3127,15 @@ class Context:
 
         res = ComputeShader.__new__(ComputeShader)
         res.mglo, res._glo = self.mglo.compute_shader(source)
+        res.ctx = self
+        return res
+
+    def sampler(self) -> 'Sampler':  # TODO: impl sampler
+        '''
+        '''
+
+        res = Sampler.__new__(Sampler)
+        res.mglo, res._glo = self.mglo.sampler()  # TODO: impl sampler
         res.ctx = self
         return res
 

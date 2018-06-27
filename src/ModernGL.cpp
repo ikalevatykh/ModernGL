@@ -367,6 +367,17 @@ bool MGL_InitializeModule(PyObject * module) {
 		PyModule_AddObject(module, "VertexArray", (PyObject *)&MGLVertexArray_Type);
 	}
 
+	{
+		if (PyType_Ready(&MGLSampler_Type) < 0) {
+			PyErr_Format(PyExc_ImportError, "Cannot register Sampler in %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__);
+			return false;
+		}
+
+		Py_INCREF(&MGLSampler_Type);
+
+		PyModule_AddObject(module, "Sampler", (PyObject *)&MGLSampler_Type);
+	}
+
 	return true;
 }
 
