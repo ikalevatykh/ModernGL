@@ -69,11 +69,14 @@ void * LoadMethod(const char * method) {
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-typedef const void * (* PROC_glXGetProcAddress)(const char *);
+typedef const void * (* PROC_glGetProcAddress)(const char *);
 
 void * LoadMethod(const char * method) {
-	static void * libgl = dlopen("libGL.so.1", RTLD_LAZY);
-	static PROC_glXGetProcAddress glXGetProcAddress = (PROC_glXGetProcAddress)dlsym(libgl, "glXGetProcAddress");
+	//static void * libgl = dlopen("libGL.so.1", RTLD_LAZY);
+	//static PROC_glGetProcAddress glGetProcAddress = (PROC_glXGetProcAddress)dlsym(libgl, "glXGetProcAddress");
+
+	static void * libgl = dlopen("libEGL.so.1", RTLD_LAZY);
+	static PROC_glGetProcAddress glGetProcAddress = (PROC_glGetProcAddress)dlsym(libgl, "eglGetProcAddress");
 
 	void * proc = (void *)dlsym(libgl, method);
 
@@ -82,7 +85,7 @@ void * LoadMethod(const char * method) {
 		return proc;
 	}
 
-	proc = (void *)glXGetProcAddress(method);
+	proc = (void *)glGetProcAddress(method);
 
 	if (proc) {
 		// printf("%s found!\n", method);

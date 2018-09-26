@@ -78,6 +78,7 @@ my_XCreateColormap_type my_XCreateColormap;
 
 // EGL
 
+
 typedef Display * EGLNativeDisplayType;
 typedef Pixmap EGLNativePixmapType;
 typedef Window EGLNativeWindowType;
@@ -88,6 +89,7 @@ typedef Window EGLNativeWindowType;
 #define EGL_NONE 0x3038
 #define EGL_BAD_DISPLAY 0x3008
 #define EGL_FALSE 0
+#define EGL_TRUE 1
 #define EGL_BAD_MATCH 0x3009
 #define EGL_NOT_INITIALIZED 0x3001
 #define EGL_BAD_CONFIG 0x3005
@@ -95,18 +97,37 @@ typedef Window EGLNativeWindowType;
 #define EGL_BAD_ATTRIBUTE 0x3004
 #define EGL_BAD_ALLOC 0x3003
 
+#define EGL_ALPHA_SIZE 0x3021
+#define EGL_DEPTH_SIZE 0x3025
+#define EGL_STENCIL_SIZE 0x3026
+#define EGL_COLOR_BUFFER_TYPE 0x303F
+#define EGL_RGB_BUFFER 0x308E
+#define EGL_SURFACE_TYPE 0x3033
+#define EGL_PBUFFER_BIT 0x0001
+#define EGL_RENDERABLE_TYPE 0x3040
+#define EGL_OPENGL_BIT 0x0008
+#define EGL_OPENGL_API 0x30A2
+
 #define EGL_NO_DISPLAY 0
 #define EGL_NO_CONTEXT 0
 #define EGL_NO_DISPLAY 0
 #define EGL_NO_SURFACE 0
+#define EGL_DEFAULT_DISPLAY 0 
+
+#define EGL_CUDA_DEVICE_NV 0x323A
+#define EGL_PLATFORM_DEVICE_EXT 0x313F
 
 typedef void * EGLDisplay;
 typedef void * EGLConfig;
 typedef void * EGLSurface;
 typedef void * EGLContext;
+typedef void * EGLDeviceEXT;
+typedef void (*__eglMustCastToProperFunctionPointerType)(void);
 
 typedef unsigned int EGLBoolean;
 typedef int EGLint;
+typedef long EGLAttrib;
+typedef unsigned int EGLenum;
 
 typedef EGLDisplay (* my_eglGetDisplay_type)(EGLNativeDisplayType display_id);
 typedef EGLBoolean (* my_eglInitialize_type)(EGLDisplay dpy, EGLint * major, EGLint * minor);
@@ -114,6 +135,11 @@ typedef EGLBoolean (* my_eglChooseConfig_type)(EGLDisplay dpy, const EGLint * at
 typedef EGLContext (* my_eglCreateContext_type)(EGLDisplay dpy, EGLConfig config, EGLContext share_context, const EGLint * attrib_list);
 typedef EGLint (* my_eglGetError_type)(void);
 typedef EGLBoolean (* my_eglMakeCurrent_type)(EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx);
+typedef EGLBoolean (* my_eglBindAPI_type) (EGLenum api);
+typedef __eglMustCastToProperFunctionPointerType (* my_eglGetProcAddress_type) (const char *procname);
+typedef EGLBoolean (* my_eglQueryDevicesEXT_type)(EGLint max_devices, EGLDeviceEXT *devices, EGLint *num_devices);
+typedef EGLDisplay (* my_eglGetPlatformDisplayEXT_type)(EGLenum platform, void *native_display, const EGLint *attrib_list);
+typedef EGLBoolean (* my_eglQueryDeviceAttribEXT_type)(EGLDeviceEXT device, EGLint attribute, EGLAttrib *value);
 
 my_eglGetDisplay_type my_eglGetDisplay;
 my_eglInitialize_type my_eglInitialize;
@@ -121,6 +147,11 @@ my_eglChooseConfig_type my_eglChooseConfig;
 my_eglCreateContext_type my_eglCreateContext;
 my_eglGetError_type my_eglGetError;
 my_eglMakeCurrent_type my_eglMakeCurrent;
+my_eglBindAPI_type my_eglBindAPI;
+my_eglGetProcAddress_type my_eglGetProcAddress;
+my_eglQueryDevicesEXT_type my_eglQueryDevicesEXT;
+my_eglGetPlatformDisplayEXT_type my_eglGetPlatformDisplayEXT;
+my_eglQueryDeviceAttribEXT_type my_eglQueryDeviceAttribEXT;
 
 // OSMesa
 
@@ -718,6 +749,9 @@ GLContext CreateGLContext(PyObject * settings) {
 	const char * backend = backend_obj ? PyUnicode_AsUTF8(backend_obj) : "X11";
 
 	if (!strcmp(backend, "EGL")) {
+		PyObject * device_obj = PyDict_GetItemString(settings, "device");
+		int cuda_device = device_obj ? PyLong_AsLong(device_obj) : -1;
+
 		const char * so = "libEGL.so.1";
 		void * handle = dlopen(so, RTLD_LAZY);
 
@@ -762,7 +796,60 @@ GLContext CreateGLContext(PyObject * settings) {
 			return context;
 		}
 
-		EGLDisplay display = my_eglGetDisplay(0);
+		my_eglBindAPI = (my_eglBindAPI_type) dlsym(handle, "eglBindAPI");
+		if (!my_eglBindAPI) {
+			MGLError_Set("cannot load eglBindAPI");
+			return context;
+		}
+
+		my_eglGetProcAddress = (my_eglGetProcAddress_type) dlsym(handle, "eglGetProcAddress");
+		if (!my_eglGetProcAddress) {
+			MGLError_Set("cannot load eglGetProcAddress");
+			return context;
+		}
+
+		my_eglQueryDevicesEXT = (my_eglQueryDevicesEXT_type) my_eglGetProcAddress("eglQueryDevicesEXT");
+		if (!my_eglQueryDevicesEXT) {
+			MGLError_Set("cannot load eglQueryDevicesEXT");
+			return context;
+		}
+		
+		my_eglGetPlatformDisplayEXT = (my_eglGetPlatformDisplayEXT_type) my_eglGetProcAddress("eglGetPlatformDisplayEXT");
+		if (!my_eglGetPlatformDisplayEXT) {
+			MGLError_Set("cannot load eglGetPlatformDisplayEXT");
+			return context;
+		}
+		
+		my_eglQueryDeviceAttribEXT = (my_eglQueryDeviceAttribEXT_type) my_eglGetProcAddress("eglQueryDeviceAttribEXT");
+		if (!my_eglQueryDeviceAttribEXT) {
+			MGLError_Set("cannot load eglQueryDeviceAttribEXT");
+			return context;
+		}
+
+		EGLDisplay display = EGL_NO_DISPLAY;
+
+		if (cuda_device < 0) {
+			display = my_eglGetDisplay(EGL_DEFAULT_DISPLAY);
+		} else {		
+			static const int MAX_DEVICES = 32;
+			EGLDeviceEXT egl_devices[MAX_DEVICES];
+			EGLint num_devices;
+			my_eglQueryDevicesEXT(MAX_DEVICES, egl_devices, &num_devices);
+			EGLint device = 0;
+			for (; device < num_devices; ++device) {
+				EGLAttrib attrib;
+				if (my_eglQueryDeviceAttribEXT(egl_devices[device], EGL_CUDA_DEVICE_NV, &attrib) == EGL_TRUE) {
+					if (attrib == cuda_device) break;
+				}
+			}
+			
+			if (device >= num_devices) {
+				MGLError_Set("cannot find EGL device");
+				return context;
+			}
+
+			display = my_eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, egl_devices[device], 0);
+		}
 
 		if (display == EGL_NO_DISPLAY) {
 			MGLError_Set("cannot detect EGL display");
@@ -776,10 +863,16 @@ GLContext CreateGLContext(PyObject * settings) {
 		}
 
 		static int const attribute_list_egl[] = {
-			EGL_RED_SIZE, 1,
-			EGL_GREEN_SIZE, 1,
-			EGL_BLUE_SIZE, 1,
-			EGL_NONE
+                        EGL_RED_SIZE,           8,
+                        EGL_GREEN_SIZE,         8,
+                        EGL_BLUE_SIZE,          8,
+                        EGL_ALPHA_SIZE,         8,
+                        EGL_DEPTH_SIZE,         16,
+                        EGL_STENCIL_SIZE,       8,
+                        EGL_COLOR_BUFFER_TYPE,  EGL_RGB_BUFFER,
+                        EGL_SURFACE_TYPE,       EGL_PBUFFER_BIT,
+                        EGL_RENDERABLE_TYPE,    EGL_OPENGL_BIT,
+                        EGL_NONE
 		};
 
 		int num_config = 0;
@@ -789,6 +882,11 @@ GLContext CreateGLContext(PyObject * settings) {
 			MGLError_Set("cannot get EGL display config");
 			return context;
 		}
+
+		if (my_eglBindAPI(EGL_OPENGL_API) != EGL_TRUE) {
+			MGLError_Set("cannot bind OpenGL API");
+			return context;
+		}		
 
 		EGLContext ctx = my_eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
 
