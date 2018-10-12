@@ -604,7 +604,7 @@ int SilentXErrorHandler(Display * d, XErrorEvent * e) {
     return 0;
 }
 
-GLContext CreateGLContext(PyObject * settings) {
+GLContext CreateGLXContext(PyObject * settings) {
 	GLContext context = {};
 	context.standalone = true;
 
@@ -751,6 +751,102 @@ void DestroyGLContext(const GLContext & context) {
 		XCloseDisplay((Display *)context.display);
 		// context.display = 0;
 	}
+}
+
+// EGL
+
+#define EGL_EGLEXT_PROTOTYPES
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
+
+GLContext CreateEGLContext(PyObject * settings) {
+	GLContext context = {};
+	context.standalone = true;
+
+    PyObject * device_obj = PyDict_GetItemString(settings, "device");
+    int cuda_device = device_obj ? PyLong_AsLong(device_obj) : 0;
+
+	static const int MAX_DEVICES = 32;
+    EGLDeviceEXT egl_devices[MAX_DEVICES];
+    EGLint num_devices;
+
+	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT =
+    (PFNEGLQUERYDEVICESEXTPROC) eglGetProcAddress("eglQueryDevicesEXT");
+
+	PFNEGLQUERYDEVICEATTRIBEXTPROC eglQueryDeviceAttribEXT =
+    (PFNEGLQUERYDEVICEATTRIBEXTPROC) eglGetProcAddress("eglQueryDeviceAttribEXT");
+
+	eglQueryDevicesEXT(MAX_DEVICES, egl_devices, &num_devices);
+	EGLint device = 0;
+	for (; device < num_devices; ++device) {
+		EGLAttrib attrib;
+		if (eglQueryDeviceAttribEXT(egl_devices[device], EGL_CUDA_DEVICE_NV, &attrib) == EGL_TRUE) {
+			if (attrib == cuda_device) break;
+		}
+	}
+
+	if (device >= num_devices) {
+        MGLError_Set("cannot find EGL device");
+        return context;
+    }
+
+	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
+          (PFNEGLGETPLATFORMDISPLAYEXTPROC) eglGetProcAddress("eglGetPlatformDisplayEXT");
+
+	EGLDisplay display = eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, egl_devices[device], 0);
+    if (display == EGL_NO_DISPLAY) {
+        MGLError_Set("cannot detect EGL display");
+        return context;
+    }
+
+	int init = eglInitialize(display, NULL, NULL);
+	if (init == EGL_BAD_DISPLAY) {
+		MGLError_Set("invalid EGL display");
+		return context;
+	}
+
+	static int const attribute_list_egl[] = {
+					EGL_RED_SIZE,           8,
+					EGL_GREEN_SIZE,         8,
+					EGL_BLUE_SIZE,          8,
+					EGL_ALPHA_SIZE,         8,
+					EGL_DEPTH_SIZE,         24,
+					//EGL_COLOR_BUFFER_TYPE,  EGL_RGB_BUFFER,
+					EGL_SURFACE_TYPE,       EGL_PBUFFER_BIT,
+					EGL_RENDERABLE_TYPE,    EGL_OPENGL_BIT,
+					EGL_NONE
+	};
+
+	int num_config = 0;
+	EGLConfig config;
+
+	if (!eglChooseConfig(display, attribute_list_egl, &config, 1, &num_config)) {
+		MGLError_Set("cannot get EGL display config");
+		return context;
+	}
+
+	if (!eglBindAPI(EGL_OPENGL_API)) {
+		MGLError_Set("cannot bind API");
+		return context;
+	}
+
+	EGLContext ctx = eglCreateContext(display, config, EGL_NO_CONTEXT, NULL);
+
+	if (!ctx) {
+		MGLError_Set("cannot create EGL context");
+		return context;
+	}
+
+	if (!eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx)) {
+		MGLError_Set("cannot select OpenGL context");
+		return context;
+	}
+
+	context.window = (void *)0;
+    context.display = display;
+    context.context = ctx;
+    return context;
 }
 
 #endif

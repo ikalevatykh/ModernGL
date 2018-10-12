@@ -1,3 +1,4 @@
+#include <dlfcn.h>
 #include "Types.hpp"
 #include "Error.hpp"
 
@@ -115,7 +116,18 @@ PyObject * create_standalone_context(PyObject * self, PyObject * args) {
 
 	MGLContext * ctx = (MGLContext *)MGLContext_Type.tp_alloc(&MGLContext_Type, 0);
 
-	ctx->gl_context = CreateGLContext(settings);
+    PyObject * backend_obj = PyDict_GetItemString(settings, "backend");
+    const char * backend = backend_obj ? PyUnicode_AsUTF8(backend_obj) : "X11";
+
+    if (!strcmp(backend, "EGL")) {
+        ctx->gl_context = CreateEGLContext(settings);
+		ctx->gl.libgl = dlopen("libEGL.so.1", RTLD_LAZY);
+		ctx->gl.GetProcAddress = (PROC_glGetProcAddress)dlsym(ctx->gl.libgl, "eglGetProcAddress");
+    } else {
+        ctx->gl_context = CreateGLXContext(settings);
+		ctx->gl.libgl = dlopen("libGL.so.1", RTLD_LAZY);
+		ctx->gl.GetProcAddress = (PROC_glGetProcAddress)dlsym(ctx->gl.libgl, "glXGetProcAddress");
+    }
 	ctx->wireframe = false;
 
 	if (PyErr_Occurred()) {

@@ -5,6 +5,8 @@
 typedef GLvoid (GLAPI * gl_attribute_normal_ptr_proc)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid * pointer);
 typedef GLvoid (GLAPI * gl_attribute_ptr_proc)(GLuint index, GLint size, GLenum type, GLsizei stride, const GLvoid * pointer);
 
+typedef const void * (* PROC_glGetProcAddress)(const char *);
+
 struct GLMethods {
 	PROC_glActiveShaderProgram ActiveShaderProgram;
 	PROC_glActiveTexture ActiveTexture;
@@ -660,9 +662,13 @@ struct GLMethods {
 	PROC_glViewportIndexedf ViewportIndexedf;
 	PROC_glViewportIndexedfv ViewportIndexedfv;
 
+	void * libgl;
+	PROC_glGetProcAddress GetProcAddress;
+
 	bool load();
 
 private:
 	GLMethods(const GLMethods & copy);
 	void operator = (const GLMethods & rhs);
+	void * loadMethod(const char * method);
 };

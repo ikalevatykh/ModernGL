@@ -30,5 +30,6 @@ struct GLContext {
 #endif
 
 GLContext LoadCurrentGLContext();
-GLContext CreateGLContext(PyObject * settings);
+GLContext CreateGLXContext(PyObject * settings);
+GLContext CreateEGLContext(PyObject * settings);
 void DestroyGLContext(const GLContext & context);

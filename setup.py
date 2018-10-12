@@ -40,7 +40,7 @@ if sys.version_info < (3, 5):
 
 libraries = {
     'windows': ['gdi32', 'opengl32', 'user32'],
-    'linux': ['GL', 'dl', 'X11'],
+    'linux': ['GL', 'dl', 'X11', 'EGL'],
     'cygwin': ['GL', 'X11'],
     'darwin': [],
 }
