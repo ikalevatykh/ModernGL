@@ -25,6 +25,7 @@ struct GLContext {
 	void * window;
 	void * context;
 	bool standalone;
+	int cuda_device;
 };
 
 #endif

@@ -40,7 +40,7 @@ if sys.version_info < (3, 5):
 
 libraries = {
     'windows': ['gdi32', 'opengl32', 'user32'],
-    'linux': ['GL', 'dl', 'X11', 'EGL'],
+    'linux': ['GL', 'dl', 'X11', 'EGL', 'cudart'],
     'cygwin': ['GL', 'X11'],
     'darwin': [],
 }
@@ -61,7 +61,12 @@ extra_linker_args = {
 
 mgl = Extension(
     name='moderngl.mgl',
-    include_dirs=['src'],
+    include_dirs=[
+        'src',
+        '/sequoia/data1/ikalevat/code',
+        '/usr/local/cuda/include'
+    ],
+    library_dirs=['/usr/local/cuda/lib64'],
     define_macros=[],
     libraries=libraries[target],
     extra_compile_args=extra_compile_args[target],

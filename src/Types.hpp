@@ -211,6 +211,8 @@ struct MGLRenderbuffer {
 
 	int samples;
 	bool depth;
+
+	void* cuda_graphics_resource;
 };
 
 struct MGLScope {

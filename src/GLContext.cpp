@@ -846,6 +846,7 @@ GLContext CreateEGLContext(PyObject * settings) {
 	context.window = (void *)0;
     context.display = display;
     context.context = ctx;
+	context.cuda_device = cuda_device;
     return context;
 }
 

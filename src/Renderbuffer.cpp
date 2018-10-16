@@ -1,5 +1,11 @@
 #include "Types.hpp"
 
+namespace cuda {
+// CUDA headers
+#include <cuda_runtime_api.h>
+#include <cuda_gl_interop.h>
+}
+
 PyObject * MGLContext_renderbuffer(MGLContext * self, PyObject * args) {
 	int width;
 	int height;
@@ -77,6 +83,7 @@ PyObject * MGLContext_renderbuffer(MGLContext * self, PyObject * args) {
 	renderbuffer->samples = samples;
 	renderbuffer->data_type = data_type;
 	renderbuffer->depth = false;
+	renderbuffer->cuda_graphics_resource = 0;
 
 	Py_INCREF(self);
 	renderbuffer->context = self;
@@ -139,6 +146,7 @@ PyObject * MGLContext_depth_renderbuffer(MGLContext * self, PyObject * args) {
 	renderbuffer->samples = samples;
 	renderbuffer->data_type = from_dtype("f4");
 	renderbuffer->depth = true;
+	renderbuffer->cuda_graphics_resource = 0;
 
 	Py_INCREF(self);
 	renderbuffer->context = self;
@@ -169,8 +177,125 @@ PyObject * MGLRenderbuffer_release(MGLRenderbuffer * self) {
 	Py_RETURN_NONE;
 }
 
+#define CHECK_CUDA(x) \
+	if (cuda::cudaError_t ret = (x)) \
+		return PyErr_Format(PyExc_RuntimeError,  "CUDA error: %d.", ret);
+
+PyObject * MGLRenderbuffer_cuda_map(MGLRenderbuffer * self, PyObject * args) {
+	unsigned int array_index = 0;
+	unsigned int mip_level = 0;
+
+	int args_ok = PyArg_ParseTuple(
+		args,
+		"|II",
+		&array_index,
+		&mip_level
+	);
+
+	if (!args_ok) {
+		PyErr_BadArgument();
+		return 0;
+	}
+
+	cuda::cudaGraphicsResource_t resource =
+		(cuda::cudaGraphicsResource_t) self->cuda_graphics_resource;
+
+	if (resource == 0) {
+		//CHECK_CUDA(cuda::cudaGLSetGLDevice(self->context->gl_context.cuda_device));
+    	CHECK_CUDA(cuda::cudaGraphicsGLRegisterImage(
+			&resource, self->renderbuffer_obj, GL_RENDERBUFFER,
+			cuda::cudaGraphicsRegisterFlagsReadOnly));
+	}
+
+	const GLMethods & gl = self->context->gl;
+	gl.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	CHECK_CUDA(cuda::cudaGraphicsMapResources(1, &resource));
+
+	cuda::cudaArray_t array;
+	CHECK_CUDA(cuda::cudaGraphicsSubResourceGetMappedArray(
+		&array, resource, array_index, mip_level));
+
+	return PyLong_FromLong((long)array);
+}
+
+PyObject * MGLRenderbuffer_cuda_unmap(MGLRenderbuffer * self) {
+	cuda::cudaGraphicsResource_t resource =
+		(cuda::cudaGraphicsResource_t) self->cuda_graphics_resource;
+
+	if (resource != 0) {
+		cuda::cudaGraphicsUnmapResources(1, &resource);
+
+		const GLMethods & gl = self->context->gl;
+		gl.BindRenderbuffer(GL_RENDERBUFFER, self->renderbuffer_obj);
+	}
+
+	return Py_None;
+}
+
+PyObject * MGLRenderbuffer_cuda_copy(MGLRenderbuffer * self, PyObject * args) {
+	long data_ptr = 0;
+	unsigned int cols = 1;
+
+	int args_ok = PyArg_ParseTuple(
+		args,
+		"l|I",
+		&data_ptr,
+		&cols
+	);
+
+	if (!args_ok) {
+		PyErr_BadArgument();
+		return 0;
+	}
+
+	cuda::cudaGraphicsResource_t resource =
+		(cuda::cudaGraphicsResource_t) self->cuda_graphics_resource;
+
+	const GLMethods & gl = self->context->gl;
+
+	if (resource == 0) {
+    	CHECK_CUDA(cuda::cudaGraphicsGLRegisterImage(
+			&resource, self->renderbuffer_obj, GL_RENDERBUFFER,
+			cuda::cudaGraphicsRegisterFlagsReadOnly));
+	}
+
+	gl.BindRenderbuffer(GL_RENDERBUFFER, 0);
+
+	CHECK_CUDA(cuda::cudaGraphicsMapResources(1, &resource));
+
+	cuda::cudaArray_t array;
+	CHECK_CUDA(cuda::cudaGraphicsSubResourceGetMappedArray(
+		&array, resource, 0, 0));
+
+	size_t width = self->width / cols;
+	size_t height = self->height;
+	size_t sz = 4 * self->data_type->size;
+
+	for(size_t i = 0; i < cols; ++i)
+		CHECK_CUDA(cuda::cudaMemcpy2DFromArrayAsync(
+			(void*)(data_ptr + i * height * width * sz),
+			width * sz, 	// dpitch
+			array, 			// src
+			i * width * sz, // w_offset,
+			0, 				// h_offset,
+			width * sz, 	// width of matrix transfer (columns in bytes)
+			height, 		// height of matrix transfer (rows)
+			cuda::cudaMemcpyDeviceToDevice
+			));
+
+	CHECK_CUDA(cuda::cudaGraphicsUnmapResources(1, &resource));
+
+	gl.BindRenderbuffer(GL_RENDERBUFFER, self->renderbuffer_obj);
+
+	return Py_None;
+}
+
 PyMethodDef MGLRenderbuffer_tp_methods[] = {
 	{"release", (PyCFunction)MGLRenderbuffer_release, METH_NOARGS, 0},
+	{"cuda_map", (PyCFunction)MGLRenderbuffer_cuda_map, METH_VARARGS, "Map buffer for access by CUDA and return array."},
+	{"cuda_unmap", (PyCFunction)MGLRenderbuffer_cuda_unmap, METH_NOARGS, "Unmap graphics resources."},
+    {"cuda_copy", (PyCFunction)MGLRenderbuffer_cuda_copy, METH_VARARGS, "Copy data to CUDA buffer"},
 	{0},
 };
 
@@ -221,6 +346,12 @@ void MGLRenderbuffer_Invalidate(MGLRenderbuffer * renderbuffer) {
 	}
 
 	// TODO: decref
+
+	if (renderbuffer->cuda_graphics_resource) {
+		cuda::cudaGraphicsResource_t resource =
+			(cuda::cudaGraphicsResource_t) renderbuffer->cuda_graphics_resource;
+		cuda::cudaGraphicsUnregisterResource(resource);
+	}
 
 	const GLMethods & gl = renderbuffer->context->gl;
 	gl.DeleteRenderbuffers(1, (GLuint *)&renderbuffer->renderbuffer_obj);

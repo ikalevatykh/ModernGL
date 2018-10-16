@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 __all__ = ['Renderbuffer']
 
 
@@ -106,3 +108,23 @@ class Renderbuffer:
         '''
 
         self.mglo.release()
+
+    @contextmanager
+    def cuda_map(self, array_index=0, mip_level=0) -> int:
+        '''
+            Map buffer for access by CUDA.
+            int: The CUDA array pointer.
+        '''
+
+        p_array = self.mglo.cuda_map(array_index, mip_level)
+        try:
+            yield p_array
+        finally:
+            self.mglo.cuda_unmap()
+
+    def cuda_copy(self, dst_pointer, cols=1) -> None:
+        '''
+            Copy data to CUDA buffer.
+        '''
+
+        self.mglo.cuda_copy(dst_pointer, cols)
