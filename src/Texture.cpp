@@ -2,6 +2,17 @@
 
 #include "InlineMethods.hpp"
 
+namespace cuda {
+// CUDA headers
+#include <cuda_runtime_api.h>
+#include <cuda_gl_interop.h>
+}
+
+#define CHECK_CUDA(x) \
+	if (cuda::cudaError_t ret = (x)) \
+		return PyErr_Format(PyExc_RuntimeError,  "CUDA error: %s, " #x, cuda::cudaGetErrorName(ret));
+
+
 PyObject * MGLContext_texture(MGLContext * self, PyObject * args) {
 	int width;
 	int height;
@@ -143,6 +154,8 @@ PyObject * MGLContext_texture(MGLContext * self, PyObject * args) {
 	texture->repeat_x = true;
 	texture->repeat_y = true;
 
+	texture->cuda_graphics_resource = 0;
+
 	Py_INCREF(self);
 	texture->context = self;
 
@@ -265,6 +278,8 @@ PyObject * MGLContext_depth_texture(MGLContext * self, PyObject * args) {
 
 	texture->repeat_x = false;
 	texture->repeat_y = false;
+
+	texture->cuda_graphics_resource = 0;
 
 	Py_INCREF(self);
 	texture->context = self;
@@ -656,6 +671,70 @@ PyObject * MGLTexture_build_mipmaps(MGLTexture * self, PyObject * args) {
 	Py_RETURN_NONE;
 }
 
+PyObject * MGLTexture_cuda_copy(MGLTexture * self, PyObject * args) {
+	long data_ptr = 0;
+	unsigned int cols = 1;
+
+	int args_ok = PyArg_ParseTuple(
+		args,
+		"l|I",
+		&data_ptr,
+		&cols
+	);
+
+	if (!args_ok) {
+		PyErr_BadArgument();
+		return 0;
+	}
+
+	const GLMethods & gl = self->context->gl;
+	gl.BindRenderbuffer(GL_TEXTURE_2D, 0);
+
+	cuda::cudaGraphicsResource_t resource =
+		(cuda::cudaGraphicsResource_t) self->cuda_graphics_resource;
+
+	if (resource == 0) {
+	   	CHECK_CUDA(cuda::cudaGraphicsGLRegisterImage(
+			&resource,
+			self->texture_obj, GL_TEXTURE_2D,
+			cuda::cudaGraphicsRegisterFlagsReadOnly));
+
+		CHECK_CUDA(cuda::cudaGraphicsResourceSetMapFlags(
+			resource,
+			cuda::cudaGraphicsRegisterFlagsReadOnly));
+
+		self->cuda_graphics_resource = resource;
+	}
+
+	CHECK_CUDA(cuda::cudaGraphicsMapResources(1, &resource));
+
+	cuda::cudaArray_t array;
+	CHECK_CUDA(cuda::cudaGraphicsSubResourceGetMappedArray(
+		&array, resource, 0, 0));
+
+	size_t width = self->width / cols;
+	size_t height = self->height;
+	size_t sz = self->components * self->data_type->size;
+
+	for(size_t i = 0; i < cols; ++i)
+		CHECK_CUDA(cuda::cudaMemcpy2DFromArray(
+			(void*)(data_ptr + i * height * width * sz), // dst
+			width * sz, 	// dpitch
+			array, 			// src
+			i * width * sz, // w_offset,
+			0, 				// h_offset,
+			width * sz, 	// width: bytes
+			height, 		// height: rows
+			cuda::cudaMemcpyDeviceToDevice
+			));
+
+	CHECK_CUDA(cuda::cudaGraphicsUnmapResources(1, &resource));
+
+	gl.BindRenderbuffer(GL_TEXTURE_2D, self->texture_obj);
+
+	return Py_None;
+}
+
 PyObject * MGLTexture_release(MGLTexture * self) {
 	MGLTexture_Invalidate(self);
 	Py_RETURN_NONE;
@@ -667,6 +746,7 @@ PyMethodDef MGLTexture_tp_methods[] = {
 	{"build_mipmaps", (PyCFunction)MGLTexture_build_mipmaps, METH_VARARGS, 0},
 	{"read", (PyCFunction)MGLTexture_read, METH_VARARGS, 0},
 	{"read_into", (PyCFunction)MGLTexture_read_into, METH_VARARGS, 0},
+	{"cuda_copy", (PyCFunction)MGLTexture_cuda_copy, METH_VARARGS, 0},
 	{"release", (PyCFunction)MGLTexture_release, METH_NOARGS, 0},
 	{0},
 };

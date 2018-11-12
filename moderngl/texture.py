@@ -190,10 +190,10 @@ class Texture:
                 texture.compare_func = '<'   # GL_LESS
                 texture.compare_func = '>='  # GL_GEQUAL
                 texture.compare_func = '>'   # GL_GREATER
-                texture.compare_func = '=='  # GL_EQUAL 
-                texture.compare_func = '!='  # GL_NOTEQUAL 
-                texture.compare_func = '0'   # GL_NEVER 
-                texture.compare_func = '1'   # GL_ALWAYS 
+                texture.compare_func = '=='  # GL_EQUAL
+                texture.compare_func = '!='  # GL_NOTEQUAL
+                texture.compare_func = '0'   # GL_NEVER
+                texture.compare_func = '1'   # GL_ALWAYS
         '''
 
         return self.mglo.compare_func
@@ -343,6 +343,13 @@ class Texture:
         '''
 
         self.mglo.use(location)
+
+    def cuda_copy(self, dst_pointer, cols=1) -> None:
+        '''
+            Copy data to CUDA buffer.
+        '''
+
+        self.mglo.cuda_copy(dst_pointer, cols)
 
     def release(self) -> None:
         '''
