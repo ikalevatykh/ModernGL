@@ -260,6 +260,8 @@ struct MGLTexture {
 
 	bool repeat_x;
 	bool repeat_y;
+
+	void* cuda_graphics_resource;
 };
 
 struct MGLTexture3D {
